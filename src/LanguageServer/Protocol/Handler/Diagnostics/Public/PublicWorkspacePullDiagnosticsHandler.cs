@@ -29,6 +29,10 @@ internal sealed partial class PublicWorkspacePullDiagnosticsHandler(
     : AbstractWorkspacePullDiagnosticsHandler<WorkspaceDiagnosticParams, WorkspaceDiagnosticPartialReport, WorkspaceDiagnosticReport?>(
         workspaceManager, registrationService, diagnosticSourceManager, diagnosticRefresher, globalOptions), IDisposable
 {
+    // All workspace diagnostics are potential duplicates given that they can be overridden by the diagnostics
+    // produced by document diagnostics.
+    protected override bool PotentialDuplicate => true;
+
     protected override string? GetRequestDiagnosticCategory(WorkspaceDiagnosticParams diagnosticsParams)
         => diagnosticsParams.Identifier;
 
@@ -40,6 +44,7 @@ internal sealed partial class PublicWorkspacePullDiagnosticsHandler(
                 new WorkspaceFullDocumentDiagnosticReport
                 {
                     Uri = identifier.DocumentUri,
+                    ProjectContext = (identifier as VSTextDocumentIdentifier)?.ProjectContext,
                     Items = diagnostics,
                     // The documents provided by workspace reports are never open, so we return null.
                     Version = null,
@@ -56,6 +61,7 @@ internal sealed partial class PublicWorkspacePullDiagnosticsHandler(
                 new WorkspaceFullDocumentDiagnosticReport
                 {
                     Uri = identifier.DocumentUri,
+                    ProjectContext = (identifier as VSTextDocumentIdentifier)?.ProjectContext,
                     Items = [],
                     // The documents provided by workspace reports are never open, so we return null.
                     Version = null,
@@ -88,9 +94,10 @@ internal sealed partial class PublicWorkspacePullDiagnosticsHandler(
         return diagnosticsParams.PreviousResultId.SelectAsArray(id => new PreviousPullResult
         {
             PreviousResultId = id.Value,
-            TextDocument = new TextDocumentIdentifier
+            TextDocument = new VSTextDocumentIdentifier
             {
-                DocumentUri = id.Uri
+                DocumentUri = id.Uri,
+                ProjectContext = id.ProjectContext,
             }
         });
     }

@@ -6,7 +6,6 @@ using System;
 using System.Composition;
 using Microsoft.CodeAnalysis.Host.Mef;
 using Microsoft.CodeAnalysis.LanguageServer;
-using Microsoft.CodeAnalysis.LanguageServer.Handler.Diagnostics;
 using Microsoft.CommonLanguageServerProtocol.Framework;
 using Roslyn.LanguageServer.Protocol;
 
@@ -35,17 +34,9 @@ internal sealed class VSTypeScriptInProcLanguageClientCapabilitiesProvider() : I
 
             ProjectContextProvider = true,
 
-            SupportsDiagnosticRequests = true,
             DiagnosticProvider = new()
             {
                 SupportsMultipleContextsDiagnostics = true,
-                DiagnosticKinds =
-                [
-                    new(PullDiagnosticCategories.Task),
-                    new(PullDiagnosticCategories.WorkspaceDocumentsAndProject),
-                    new(PullDiagnosticCategories.DocumentAnalyzerSyntax),
-                    new(PullDiagnosticCategories.DocumentAnalyzerSemantic),
-                ]
             }
         };
 

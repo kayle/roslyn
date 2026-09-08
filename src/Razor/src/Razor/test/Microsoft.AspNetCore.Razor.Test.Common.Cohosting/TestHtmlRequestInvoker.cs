@@ -35,7 +35,8 @@ internal class TestHtmlRequestInvoker : IHtmlRequestInvoker
         if (_getResponses is not null &&
             _getResponses.TryGetValue(method, out var getResponse))
         {
-            return Task.FromResult((TResponse?)getResponse(request));
+            var response = getResponse(request);
+            return Task.FromResult(response is null ? default : (TResponse?)response);
         }
 
         return Task.FromResult<TResponse?>(default);

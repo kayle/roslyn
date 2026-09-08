@@ -33,7 +33,7 @@ internal sealed class DocumentPullDiagnosticsEndpoint(
     ITelemetryReporter telemetryReporter,
     ILoggerFactory loggerFactory,
     IEditAndContinueSessionTracker encSessionTracker)
-    : CohostDocumentPullDiagnosticsEndpointBase<DocumentDiagnosticParams, FullDocumentDiagnosticReport?, DocumentDiagnosticParams, FullDocumentDiagnosticReport?>(
+    : CohostDocumentPullDiagnosticsEndpointBase<DocumentDiagnosticParams, FullDocumentDiagnosticReport?, DocumentDiagnosticParams, SumType<FullDocumentDiagnosticReport, UnchangedDocumentDiagnosticReport>>(
         incompatibleProjectService,
         remoteServiceInvoker,
         requestInvoker,
@@ -44,7 +44,7 @@ internal sealed class DocumentPullDiagnosticsEndpoint(
       IDynamicRegistrationProvider
 {
     protected override string LspMethodName => Methods.TextDocumentDiagnosticName;
-    protected override bool SupportsHtmlDiagnostics => false;
+    protected override bool SupportsHtmlDiagnostics => true;
 
     public ImmutableArray<Registration> GetRegistrations(VSInternalClientCapabilities clientCapabilities, RequestContext requestContext)
     {
@@ -65,6 +65,15 @@ internal sealed class DocumentPullDiagnosticsEndpoint(
 
     protected override TextDocumentIdentifier? GetRazorTextDocumentIdentifier(DocumentDiagnosticParams request)
         => request.TextDocument;
+
+    protected override DocumentDiagnosticParams CreateHtmlParams(DocumentUri uri)
+        => new()
+        {
+            TextDocument = new TextDocumentIdentifier { DocumentUri = uri }
+        };
+
+    protected override LspDiagnostic[] ExtractHtmlDiagnostics(SumType<FullDocumentDiagnosticReport, UnchangedDocumentDiagnosticReport> result)
+        => result.Value is FullDocumentDiagnosticReport report ? report.Items : [];
 
     protected override async Task<FullDocumentDiagnosticReport?> HandleRequestAsync(DocumentDiagnosticParams request, TextDocument razorDocument, CancellationToken cancellationToken)
     {
