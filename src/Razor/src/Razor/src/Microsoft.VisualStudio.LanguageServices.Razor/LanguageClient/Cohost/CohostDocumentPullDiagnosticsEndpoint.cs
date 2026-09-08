@@ -37,7 +37,11 @@ internal sealed class CohostDocumentPullDiagnosticsEndpoint(
     ITelemetryReporter telemetryReporter,
     ILoggerFactory loggerFactory,
     IEditAndContinueSessionTracker encSessionTracker)
-    : VisualStudioDocumentPullDiagnosticsEndpointBase<VSInternalDocumentDiagnosticsParams, VSInternalDiagnosticReport[]>(
+    : VisualStudioDocumentPullDiagnosticsEndpointBase<
+        VSInternalDocumentDiagnosticsParams,
+        VSInternalDiagnosticReport[],
+        VSInternalDocumentDiagnosticsParams,
+        VSInternalDiagnosticReport[]>(
         incompatibleProjectService,
         remoteServiceInvoker,
         requestInvoker,
@@ -78,7 +82,7 @@ internal sealed class CohostDocumentPullDiagnosticsEndpoint(
                 cancellationToken).ConfigureAwait(false);
         }
 
-        var results = await GetVSDiagnosticsAsync(razorDocument, cancellationToken).ConfigureAwait(false);
+        var results = await GetVSDiagnosticsAsync(request, razorDocument, cancellationToken).ConfigureAwait(false);
         if (results is null)
         {
             return null;
@@ -110,12 +114,34 @@ internal sealed class CohostDocumentPullDiagnosticsEndpoint(
         ];
     }
 
+    protected override VSInternalDocumentDiagnosticsParams CreateHtmlParams(VSInternalDocumentDiagnosticsParams _, DocumentUri uri)
+    {
+        return new VSInternalDocumentDiagnosticsParams
+        {
+            TextDocument = new TextDocumentIdentifier { DocumentUri = uri }
+        };
+    }
+
+    protected override LspDiagnostic[] ExtractHtmlDiagnostics(VSInternalDiagnosticReport[] result)
+    {
+        using var allDiagnostics = new PooledArrayBuilder<LspDiagnostic>();
+        foreach (var report in result)
+        {
+            if (report.Diagnostics is not null)
+            {
+                allDiagnostics.AddRange(report.Diagnostics);
+            }
+        }
+
+        return allDiagnostics.ToArray();
+    }
+
     internal TestAccessor GetTestAccessor() => new(this);
 
     internal readonly struct TestAccessor(CohostDocumentPullDiagnosticsEndpoint instance)
     {
-        public Task<LspDiagnostic[]?> HandleRequestAsync(TextDocument razorDocument, CancellationToken cancellationToken)
-            => instance.GetVSDiagnosticsAsync(razorDocument, cancellationToken);
+        public Task<LspDiagnostic[]?> HandleRequestAsync(VSInternalDocumentDiagnosticsParams request, TextDocument razorDocument, CancellationToken cancellationToken)
+            => instance.GetVSDiagnosticsAsync(request, razorDocument, cancellationToken);
 
         public Task<VSInternalDiagnosticReport[]> HandleTaskListItemRequestAsync(TextDocument razorDocument, CancellationToken cancellationToken)
             => instance.HandleTaskListItemRequestAsync(razorDocument, cancellationToken);
@@ -137,7 +163,11 @@ internal sealed class PublicCohostDocumentPullDiagnosticsEndpoint(
     ITelemetryReporter telemetryReporter,
     ILoggerFactory loggerFactory,
     IEditAndContinueSessionTracker encSessionTracker)
-    : VisualStudioDocumentPullDiagnosticsEndpointBase<DocumentDiagnosticParams, FullDocumentDiagnosticReport?>(
+    : VisualStudioDocumentPullDiagnosticsEndpointBase<
+        DocumentDiagnosticParams,
+        FullDocumentDiagnosticReport?,
+        DocumentDiagnosticParams,
+        SumType<FullDocumentDiagnosticReport, UnchangedDocumentDiagnosticReport>>(
         incompatibleProjectService,
         remoteServiceInvoker,
         requestInvoker,
@@ -196,7 +226,7 @@ internal sealed class PublicCohostDocumentPullDiagnosticsEndpoint(
             };
         }
 
-        var results = await GetVSDiagnosticsAsync(razorDocument, cancellationToken).ConfigureAwait(false);
+        var results = await GetVSDiagnosticsAsync(request, razorDocument, cancellationToken).ConfigureAwait(false);
         if (results is null)
         {
             return null;
@@ -209,6 +239,18 @@ internal sealed class PublicCohostDocumentPullDiagnosticsEndpoint(
         };
     }
 
+    protected override DocumentDiagnosticParams CreateHtmlParams(DocumentDiagnosticParams request, DocumentUri uri)
+    {
+        return new DocumentDiagnosticParams
+        {
+            TextDocument = new TextDocumentIdentifier { DocumentUri = uri },
+            Identifier = request.Identifier,
+        };
+    }
+
+    protected override LspDiagnostic[] ExtractHtmlDiagnostics(SumType<FullDocumentDiagnosticReport, UnchangedDocumentDiagnosticReport> result)
+        => result.Value is FullDocumentDiagnosticReport report ? report.Items : [];
+
     internal TestAccessor GetTestAccessor() => new(this);
 
     internal readonly struct TestAccessor(PublicCohostDocumentPullDiagnosticsEndpoint instance)
@@ -218,7 +260,7 @@ internal sealed class PublicCohostDocumentPullDiagnosticsEndpoint(
     }
 }
 
-internal abstract class VisualStudioDocumentPullDiagnosticsEndpointBase<TRequest, TResponse>(
+internal abstract class VisualStudioDocumentPullDiagnosticsEndpointBase<TRequest, TResponse, THtmlRequest, THtmlResponse>(
     IIncompatibleProjectService incompatibleProjectService,
     IRemoteServiceInvoker remoteServiceInvoker,
     IHtmlRequestInvoker requestInvoker,
@@ -226,7 +268,7 @@ internal abstract class VisualStudioDocumentPullDiagnosticsEndpointBase<TRequest
     ITelemetryReporter telemetryReporter,
     ILogger logger,
     IEditAndContinueSessionTracker encSessionTracker)
-    : CohostDocumentPullDiagnosticsEndpointBase<TRequest, TResponse, VSInternalDocumentDiagnosticsParams, VSInternalDiagnosticReport[]>(
+    : CohostDocumentPullDiagnosticsEndpointBase<TRequest, TResponse, THtmlRequest, THtmlResponse>(
         incompatibleProjectService,
         remoteServiceInvoker,
         requestInvoker,
@@ -235,16 +277,22 @@ internal abstract class VisualStudioDocumentPullDiagnosticsEndpointBase<TRequest
         logger,
         encSessionTracker)
     where TRequest : notnull
+    where THtmlRequest : notnull
 {
     private readonly IRemoteServiceInvoker _remoteServiceInvoker = remoteServiceInvoker;
     private readonly IClientCapabilitiesService _clientCapabilitiesService = clientCapabilitiesService;
 
-    protected sealed override string HtmlLspMethodName => VSInternalMethods.DocumentPullDiagnosticName;
     protected sealed override bool SupportsHtmlDiagnostics => true;
 
-    protected async Task<LspDiagnostic[]?> GetVSDiagnosticsAsync(TextDocument razorDocument, CancellationToken cancellationToken)
+    protected abstract THtmlRequest CreateHtmlParams(TRequest request, DocumentUri uri);
+    protected abstract override LspDiagnostic[] ExtractHtmlDiagnostics(THtmlResponse result);
+
+    protected async Task<LspDiagnostic[]?> GetVSDiagnosticsAsync(TRequest request, TextDocument razorDocument, CancellationToken cancellationToken)
     {
-        var diagnostics = await GetDiagnosticsAsync(razorDocument, cancellationToken).ConfigureAwait(false);
+        var diagnostics = await GetDiagnosticsAsync(
+            razorDocument,
+            uri => CreateHtmlParams(request, uri),
+            cancellationToken).ConfigureAwait(false);
         if (diagnostics is null)
         {
             return null;
@@ -272,28 +320,6 @@ internal abstract class VisualStudioDocumentPullDiagnosticsEndpointBase<TRequest
         }
 
         return results;
-    }
-
-    protected sealed override VSInternalDocumentDiagnosticsParams CreateHtmlParams(DocumentUri uri)
-    {
-        return new VSInternalDocumentDiagnosticsParams
-        {
-            TextDocument = new TextDocumentIdentifier { DocumentUri = uri }
-        };
-    }
-
-    protected sealed override LspDiagnostic[] ExtractHtmlDiagnostics(VSInternalDiagnosticReport[] result)
-    {
-        using var allDiagnostics = new PooledArrayBuilder<LspDiagnostic>();
-        foreach (var report in result)
-        {
-            if (report.Diagnostics is not null)
-            {
-                allDiagnostics.AddRange(report.Diagnostics);
-            }
-        }
-
-        return allDiagnostics.ToArray();
     }
 
     protected async Task<LspDiagnostic[]> GetTaskListDiagnosticsAsync(TextDocument razorDocument, CancellationToken cancellationToken)
