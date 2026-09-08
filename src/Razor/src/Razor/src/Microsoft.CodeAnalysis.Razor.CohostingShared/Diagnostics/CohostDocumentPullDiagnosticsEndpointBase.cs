@@ -54,7 +54,13 @@ internal abstract class CohostDocumentPullDiagnosticsEndpointBase<TRequest, TRes
         throw new NotSupportedException("If SupportsHtmlDiagnostics is true, you must implement CreateHtmlParams");
     }
 
-    protected async Task<LspDiagnostic[]?> GetDiagnosticsAsync(TextDocument razorDocument, CancellationToken cancellationToken)
+    protected Task<LspDiagnostic[]?> GetDiagnosticsAsync(TextDocument razorDocument, CancellationToken cancellationToken)
+        => GetDiagnosticsAsync(razorDocument, CreateHtmlParams, cancellationToken);
+
+    protected async Task<LspDiagnostic[]?> GetDiagnosticsAsync(
+        TextDocument razorDocument,
+        Func<DocumentUri, THtmlRequest> createHtmlParams,
+        CancellationToken cancellationToken)
     {
         var correlationId = Guid.NewGuid();
         using var _ = _telemetryReporter.TrackLspRequest(LspMethodName, LanguageServerConstants.RazorLanguageServerName, TelemetryThresholds.DiagnosticsRazorTelemetryThreshold, correlationId);
@@ -67,7 +73,7 @@ internal abstract class CohostDocumentPullDiagnosticsEndpointBase<TRequest, TRes
 
         var csharpTask = GetCSharpDiagnosticsAsync(razorDocument, correlationId, cancellationToken);
         var htmlTask = SupportsHtmlDiagnostics
-            ? GetHtmlDiagnosticsAsync(razorDocument, correlationId, cancellationToken)
+            ? GetHtmlDiagnosticsAsync(razorDocument, createHtmlParams, correlationId, cancellationToken)
             : SpecializedTasks.EmptyArray<LspDiagnostic>();
 
         try
@@ -131,9 +137,13 @@ internal abstract class CohostDocumentPullDiagnosticsEndpointBase<TRequest, TRes
         return (implDiagnostics, declDiagnostics);
     }
 
-    private async Task<LspDiagnostic[]> GetHtmlDiagnosticsAsync(TextDocument razorDocument, Guid correlationId, CancellationToken cancellationToken)
+    private async Task<LspDiagnostic[]> GetHtmlDiagnosticsAsync(
+        TextDocument razorDocument,
+        Func<DocumentUri, THtmlRequest> createHtmlParams,
+        Guid correlationId,
+        CancellationToken cancellationToken)
     {
-        var diagnosticsParams = CreateHtmlParams(razorDocument.GetURI());
+        var diagnosticsParams = createHtmlParams(razorDocument.GetURI());
 
         var result = await _requestInvoker.MakeHtmlLspRequestAsync<THtmlRequest, THtmlResponse>(
             razorDocument,

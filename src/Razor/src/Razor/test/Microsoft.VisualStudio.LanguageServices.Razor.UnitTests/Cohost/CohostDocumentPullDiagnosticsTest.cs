@@ -26,6 +26,26 @@ namespace Microsoft.VisualStudio.Razor.LanguageClient.Cohost;
 public partial class CohostDocumentPullDiagnosticsTest
 {
     [Fact]
+    public async Task LegacyRequest_UsesLegacyHtmlRequest()
+    {
+        var document = CreateProjectAndRazorDocument("<div></div>");
+        var invokedLegacyHtmlRequest = false;
+        var requestInvoker = new TestHtmlRequestInvoker(
+            (VSInternalMethods.DocumentPullDiagnosticName, request =>
+            {
+                var diagnosticParams = Assert.IsType<VSInternalDocumentDiagnosticsParams>(request);
+                Assert.Equal(document.GetURI(), diagnosticParams.TextDocument?.DocumentUri);
+                invokedLegacyHtmlRequest = true;
+                return null;
+            }
+        ));
+
+        await MakeDiagnosticsRequestAsync(document, taskListRequest: false, requestInvoker, IncompatibleProjectService, RemoteServiceInvoker, ClientCapabilitiesService, LoggerFactory, DisposalToken);
+
+        Assert.True(invokedLegacyHtmlRequest);
+    }
+
+    [Fact]
     public async Task CSharpUnusedUsings_WarningDiagnosticsInVS()
     {
         var document = CreateProjectAndRazorDocument("""
@@ -60,7 +80,7 @@ public partial class CohostDocumentPullDiagnosticsTest
     }
 
     [Fact]
-    public async Task PublicRequest_PreservesVSDiagnosticMetadataAndUsesLegacyHtmlRequest()
+    public async Task PublicRequest_PreservesVSDiagnosticMetadataAndUsesPublicHtmlRequest()
     {
         var document = CreateProjectAndRazorDocument("""
             @using System
@@ -75,13 +95,29 @@ public partial class CohostDocumentPullDiagnosticsTest
                 }
             }
             """);
+        var sourceText = await document.GetTextAsync(DisposalToken);
+        var htmlRange = sourceText.GetRange(new TextSpan(sourceText.ToString().IndexOf("<div>"), "<div>".Length));
 
-        var invokedLegacyHtmlRequest = false;
+        var invokedPublicHtmlRequest = false;
         var requestInvoker = new TestHtmlRequestInvoker(
-            (VSInternalMethods.DocumentPullDiagnosticName, _ =>
+            (Methods.TextDocumentDiagnosticName, request =>
             {
-                invokedLegacyHtmlRequest = true;
-                return null;
+                var diagnosticParams = Assert.IsType<DocumentDiagnosticParams>(request);
+                Assert.Equal(document.GetURI(), diagnosticParams.TextDocument.DocumentUri);
+                Assert.Equal(PullDiagnosticCategories.DocumentCompilerSyntax, diagnosticParams.Identifier);
+                invokedPublicHtmlRequest = true;
+                return new SumType<FullDocumentDiagnosticReport, UnchangedDocumentDiagnosticReport>(
+                    new FullDocumentDiagnosticReport
+                    {
+                        Items =
+                        [
+                            new LspDiagnostic
+                            {
+                                Code = "HTML0001",
+                                Range = htmlRange,
+                            }
+                        ]
+                    });
             }
         ));
         var endpoint = new PublicCohostDocumentPullDiagnosticsEndpoint(IncompatibleProjectService, RemoteServiceInvoker, requestInvoker, ClientCapabilitiesService, NoOpTelemetryReporter.Instance, LoggerFactory, VoidSessionTracker.Instance);
@@ -93,15 +129,43 @@ public partial class CohostDocumentPullDiagnosticsTest
 
         var result = await endpoint.GetTestAccessor().HandleRequestAsync(request, document, DisposalToken);
 
-        Assert.True(invokedLegacyHtmlRequest);
-        var diagnostic = Assert.IsType<VSDiagnostic>(Assert.Single(Assert.IsType<FullDocumentDiagnosticReport>(result).Items));
+        Assert.True(invokedPublicHtmlRequest);
+        var diagnostics = Assert.IsType<FullDocumentDiagnosticReport>(result).Items;
+        var diagnostic = Assert.IsType<VSDiagnostic>(Assert.Single(diagnostics, d => d.Code.AssumeNotNull().Second == "RZ0005"));
+        Assert.Contains(diagnostics, d => d.Code.AssumeNotNull().Second == "HTML0001");
+        Assert.All(diagnostics, d =>
+        {
+            var vsDiagnostic = Assert.IsType<VSDiagnostic>(d);
+            Assert.NotNull(vsDiagnostic.Identifier);
+            Assert.NotNull(vsDiagnostic.Projects);
+            Assert.NotNull(Assert.Single(vsDiagnostic.Projects).ProjectIdentifier);
+        });
         Assert.NotNull(diagnostic.Identifier);
-        Assert.NotNull(diagnostic.Projects);
-        Assert.NotNull(Assert.Single(diagnostic.Projects).ProjectIdentifier);
         Assert.Collection(
             Assert.IsType<DiagnosticTag[]>(diagnostic.Tags),
             tag => Assert.Equal(VSDiagnosticTags.HiddenInEditor, tag),
             tag => Assert.Equal(DiagnosticTag.Unnecessary, tag));
+    }
+
+    [Fact]
+    public async Task PublicRequest_ConsumesUnchangedHtmlReport()
+    {
+        var document = CreateProjectAndRazorDocument("<div></div>");
+        var requestInvoker = new TestHtmlRequestInvoker(
+            (Methods.TextDocumentDiagnosticName, new SumType<FullDocumentDiagnosticReport, UnchangedDocumentDiagnosticReport>(
+                new UnchangedDocumentDiagnosticReport { ResultId = "unchanged" })));
+        var endpoint = new PublicCohostDocumentPullDiagnosticsEndpoint(IncompatibleProjectService, RemoteServiceInvoker, requestInvoker, ClientCapabilitiesService, NoOpTelemetryReporter.Instance, LoggerFactory, VoidSessionTracker.Instance);
+        var request = new DocumentDiagnosticParams
+        {
+            TextDocument = new TextDocumentIdentifier { DocumentUri = document.GetURI() },
+            Identifier = PullDiagnosticCategories.DocumentCompilerSyntax,
+        };
+
+        var result = await endpoint.GetTestAccessor().HandleRequestAsync(request, document, DisposalToken);
+
+        var report = Assert.IsType<FullDocumentDiagnosticReport>(result);
+        Assert.Empty(report.Items);
+        Assert.NotNull(report.ResultId);
     }
 
     [Fact]
@@ -890,7 +954,13 @@ public partial class CohostDocumentPullDiagnosticsTest
             ? await endpoint.GetTestAccessor().HandleTaskListItemRequestAsync(document, cancellationToken)
             : [new()
                 {
-                    Diagnostics = await endpoint.GetTestAccessor().HandleRequestAsync(document, cancellationToken)
+                    Diagnostics = await endpoint.GetTestAccessor().HandleRequestAsync(
+                        new VSInternalDocumentDiagnosticsParams
+                        {
+                            TextDocument = new TextDocumentIdentifier { DocumentUri = document.GetURI() }
+                        },
+                        document,
+                        cancellationToken)
                 }];
         return result.FirstOrDefault()?.Diagnostics;
     }
