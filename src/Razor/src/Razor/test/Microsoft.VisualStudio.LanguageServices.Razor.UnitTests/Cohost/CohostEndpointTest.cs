@@ -130,12 +130,6 @@ public class CohostEndpointTest(ITestOutputHelper testOutputHelper) : ToolingTes
             Assert.All(registrations, registration => Assert.IsAssignableFrom<ITextDocumentRegistrationOptions>(registration.RegisterOptions));
         }
 
-        var legacyDiagnosticEndpoint = Assert.Single(providers.OfType<CohostDocumentPullDiagnosticsEndpoint>());
-        var legacyDiagnosticRegistration = Assert.Single(legacyDiagnosticEndpoint.GetRegistrations(clientCapabilities, requestContext: new()));
-        Assert.Equal(VSInternalMethods.DocumentPullDiagnosticName, legacyDiagnosticRegistration.Method);
-        var legacyDiagnosticOptions = Assert.IsType<VSInternalDiagnosticRegistrationOptions>(legacyDiagnosticRegistration.RegisterOptions);
-        Assert.Equal([VSInternalDiagnosticKind.Syntax, VSInternalDiagnosticKind.Task], legacyDiagnosticOptions.DiagnosticKinds);
-
         var publicDiagnosticEndpoint = Assert.Single(providers.OfType<PublicCohostDocumentPullDiagnosticsEndpoint>());
         var publicDiagnosticRegistrations = publicDiagnosticEndpoint.GetRegistrations(clientCapabilities, requestContext: new());
         Assert.Collection(

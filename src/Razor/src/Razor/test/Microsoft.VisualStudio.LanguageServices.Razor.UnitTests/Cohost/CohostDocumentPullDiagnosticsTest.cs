@@ -26,26 +26,6 @@ namespace Microsoft.VisualStudio.Razor.LanguageClient.Cohost;
 public partial class CohostDocumentPullDiagnosticsTest
 {
     [Fact]
-    public async Task LegacyRequest_UsesLegacyHtmlRequest()
-    {
-        var document = CreateProjectAndRazorDocument("<div></div>");
-        var invokedLegacyHtmlRequest = false;
-        var requestInvoker = new TestHtmlRequestInvoker(
-            (VSInternalMethods.DocumentPullDiagnosticName, request =>
-            {
-                var diagnosticParams = Assert.IsType<VSInternalDocumentDiagnosticsParams>(request);
-                Assert.Equal(document.GetURI(), diagnosticParams.TextDocument?.DocumentUri);
-                invokedLegacyHtmlRequest = true;
-                return null;
-            }
-        ));
-
-        await MakeDiagnosticsRequestAsync(document, taskListRequest: false, requestInvoker, IncompatibleProjectService, RemoteServiceInvoker, ClientCapabilitiesService, LoggerFactory, DisposalToken);
-
-        Assert.True(invokedLegacyHtmlRequest);
-    }
-
-    [Fact]
     public async Task CSharpUnusedUsings_WarningDiagnosticsInVS()
     {
         var document = CreateProjectAndRazorDocument("""
@@ -62,7 +42,7 @@ public partial class CohostDocumentPullDiagnosticsTest
             }
             """);
 
-        var requestInvoker = new TestHtmlRequestInvoker([(VSInternalMethods.DocumentPullDiagnosticName, (VSInternalDiagnosticReport[]?)null)]);
+        var requestInvoker = new TestHtmlRequestInvoker([(Methods.TextDocumentDiagnosticName, (SumType<FullDocumentDiagnosticReport, UnchangedDocumentDiagnosticReport>?)null)]);
         var result = await MakeDiagnosticsRequestAsync(document, taskListRequest: false, requestInvoker, IncompatibleProjectService, RemoteServiceInvoker, ClientCapabilitiesService, LoggerFactory, DisposalToken);
 
         Assert.NotNull(result);
@@ -225,10 +205,10 @@ public partial class CohostDocumentPullDiagnosticsTest
             """;
 
         return VerifyDiagnosticsAsync(input,
-           htmlResponse: [new VSInternalDiagnosticReport
-            {
-                Diagnostics =
-                [
+           htmlResponse: new FullDocumentDiagnosticReport
+           {
+               Items =
+               [
                     new VSDiagnostic
                     {
                         Code = "HTM1337",
@@ -256,8 +236,8 @@ public partial class CohostDocumentPullDiagnosticsTest
                             ProjectIdentifier = "CSS"
                         }]
                     },
-                ]
-            }]);
+               ]
+           });
     }
 
     [Fact, WorkItem("https://github.com/dotnet/razor/issues/13251")]
@@ -272,9 +252,9 @@ public partial class CohostDocumentPullDiagnosticsTest
 
         return VerifyDiagnosticsAsync(
             input,
-            htmlResponse: [new VSInternalDiagnosticReport
+            htmlResponse: new FullDocumentDiagnosticReport
             {
-                Diagnostics =
+                Items =
                 [
                     new LspDiagnostic
                     {
@@ -282,7 +262,7 @@ public partial class CohostDocumentPullDiagnosticsTest
                         Range = SourceText.From(input.Text).GetRange(new TextSpan(input.Text.IndexOf(';'), 1))
                     }
                 ]
-            }],
+            },
             fileKind: RazorFileKind.Legacy);
     }
 
@@ -297,9 +277,9 @@ public partial class CohostDocumentPullDiagnosticsTest
 
         return VerifyDiagnosticsAsync(
             input,
-            htmlResponse: [new VSInternalDiagnosticReport
+            htmlResponse: new FullDocumentDiagnosticReport
             {
-                Diagnostics =
+                Items =
                 [
                     new LspDiagnostic
                     {
@@ -307,7 +287,7 @@ public partial class CohostDocumentPullDiagnosticsTest
                         Range = SourceText.From(input.Text).GetRange(input.NamedSpans["TS1109"].First())
                     }
                 ]
-            }],
+            },
             fileKind: RazorFileKind.Legacy);
     }
 
@@ -323,9 +303,9 @@ public partial class CohostDocumentPullDiagnosticsTest
             """;
 
         return VerifyDiagnosticsAsync(input,
-            htmlResponse: [new VSInternalDiagnosticReport
+            htmlResponse: new FullDocumentDiagnosticReport
             {
-                Diagnostics =
+                Items =
                 [
                     new LspDiagnostic
                     {
@@ -333,7 +313,7 @@ public partial class CohostDocumentPullDiagnosticsTest
                         Range = SourceText.From(input.Text).GetRange(input.NamedSpans.First().Value.First())
                     }
                 ]
-            }]);
+            });
     }
 
     [Fact]
@@ -359,9 +339,9 @@ public partial class CohostDocumentPullDiagnosticsTest
             """;
 
         return VerifyDiagnosticsAsync(input,
-            htmlResponse: [new VSInternalDiagnosticReport
+            htmlResponse: new FullDocumentDiagnosticReport
             {
-                Diagnostics =
+                Items =
                 [
                     new LspDiagnostic
                     {
@@ -374,7 +354,7 @@ public partial class CohostDocumentPullDiagnosticsTest
                         Range = SourceText.From(input.Text).GetRange(new TextSpan(input.Text.IndexOf("f"), 1))
                     }
                 ]
-            }]);
+            });
     }
 
     [Fact]
@@ -397,9 +377,9 @@ public partial class CohostDocumentPullDiagnosticsTest
             """;
 
         return VerifyDiagnosticsAsync(input,
-            htmlResponse: [new VSInternalDiagnosticReport
+            htmlResponse: new FullDocumentDiagnosticReport
             {
-                Diagnostics =
+                Items =
                 [
                     new LspDiagnostic
                     {
@@ -412,7 +392,7 @@ public partial class CohostDocumentPullDiagnosticsTest
                         Range = SourceText.From(input.Text).GetRange(new TextSpan(input.Text.IndexOf("~~"), 1))
                     }
                 ]
-            }]);
+            });
     }
 
     [Fact]
@@ -431,9 +411,9 @@ public partial class CohostDocumentPullDiagnosticsTest
             """;
 
         return VerifyDiagnosticsAsync(input,
-            htmlResponse: [new VSInternalDiagnosticReport
+            htmlResponse: new FullDocumentDiagnosticReport
             {
-                Diagnostics =
+                Items =
                 [
                     new LspDiagnostic
                     {
@@ -446,7 +426,7 @@ public partial class CohostDocumentPullDiagnosticsTest
                         Range = SourceText.From(input.Text).GetRange(new TextSpan(input.Text.IndexOf("~~"), 1))
                     }
                 ]
-            }]);
+            });
     }
 
     [Fact]
@@ -465,9 +445,9 @@ public partial class CohostDocumentPullDiagnosticsTest
             """;
 
         return VerifyDiagnosticsAsync(input,
-            htmlResponse: [new VSInternalDiagnosticReport
+            htmlResponse: new FullDocumentDiagnosticReport
             {
-                Diagnostics =
+                Items =
                 [
                     new LspDiagnostic
                     {
@@ -480,7 +460,7 @@ public partial class CohostDocumentPullDiagnosticsTest
                         Range = SourceText.From(input.Text).GetRange(new TextSpan(input.Text.IndexOf("~~"), 1))
                     }
                 ]
-            }]);
+            });
     }
 
     [Fact]
@@ -508,9 +488,9 @@ public partial class CohostDocumentPullDiagnosticsTest
             """;
 
         return VerifyDiagnosticsAsync(input,
-            htmlResponse: [new VSInternalDiagnosticReport
+            htmlResponse: new FullDocumentDiagnosticReport
             {
-                Diagnostics =
+                Items =
                 [
                     new LspDiagnostic
                     {
@@ -523,7 +503,7 @@ public partial class CohostDocumentPullDiagnosticsTest
                         Range = SourceText.From(input.Text).GetRange(new TextSpan(input.Text.IndexOf(".{") + 1, 1))
                     },
                 ]
-            }]);
+            });
     }
 
     [Fact]
@@ -551,9 +531,9 @@ public partial class CohostDocumentPullDiagnosticsTest
             """;
 
         return VerifyDiagnosticsAsync(input,
-            htmlResponse: [new VSInternalDiagnosticReport
+            htmlResponse: new FullDocumentDiagnosticReport
             {
-                Diagnostics =
+                Items =
                 [
                     new LspDiagnostic
                     {
@@ -566,7 +546,7 @@ public partial class CohostDocumentPullDiagnosticsTest
                         Range = SourceText.From(input.Text).GetRange(new TextSpan(input.Text.IndexOf(". {") + 1, 1))
                     },
                 ]
-            }]);
+            });
     }
 
     [Fact]
@@ -594,9 +574,9 @@ public partial class CohostDocumentPullDiagnosticsTest
             """;
 
         return VerifyDiagnosticsAsync(input,
-            htmlResponse: [new VSInternalDiagnosticReport
+            htmlResponse: new FullDocumentDiagnosticReport
             {
-                Diagnostics =
+                Items =
                 [
                     new LspDiagnostic
                     {
@@ -609,7 +589,7 @@ public partial class CohostDocumentPullDiagnosticsTest
                         Range = SourceText.From(input.Text).GetRange(new TextSpan(input.Text.IndexOf(": /") + 1, 1))
                     },
                 ]
-            }]);
+            });
     }
 
     [Fact]
@@ -629,9 +609,9 @@ public partial class CohostDocumentPullDiagnosticsTest
             """;
 
         return VerifyDiagnosticsAsync(input,
-            htmlResponse: [new VSInternalDiagnosticReport
+            htmlResponse: new FullDocumentDiagnosticReport
             {
-                Diagnostics =
+                Items =
                 [
                     new LspDiagnostic
                     {
@@ -644,7 +624,7 @@ public partial class CohostDocumentPullDiagnosticsTest
                         Range = SourceText.From(input.Text).GetRange(new TextSpan(input.Text.IndexOf("@"), CSharpExpression.Length))
                     },
                 ]
-            }]);
+            });
     }
 
     [Fact]
@@ -659,9 +639,9 @@ public partial class CohostDocumentPullDiagnosticsTest
             """;
 
         return VerifyDiagnosticsAsync(input,
-            htmlResponse: [new VSInternalDiagnosticReport
+            htmlResponse: new FullDocumentDiagnosticReport
             {
-                Diagnostics =
+                Items =
                 [
                     new LspDiagnostic
                     {
@@ -669,7 +649,7 @@ public partial class CohostDocumentPullDiagnosticsTest
                         Range = SourceText.From(input.Text).GetRange(new TextSpan(input.Text.IndexOf("/"), "/****/".Length))
                     },
                 ]
-            }]);
+            });
     }
 
     [Fact]
@@ -708,9 +688,9 @@ public partial class CohostDocumentPullDiagnosticsTest
 
         return VerifyDiagnosticsAsync(
             input,
-            htmlResponse: [new VSInternalDiagnosticReport
+            htmlResponse: new FullDocumentDiagnosticReport
             {
-                Diagnostics =
+                Items =
                 [
                     new LspDiagnostic
                     {
@@ -723,7 +703,7 @@ public partial class CohostDocumentPullDiagnosticsTest
                         Range = sourceText.GetRange(new TextSpan(input.Text.IndexOf("/****/"), "/****/".Length))
                     },
                 ]
-            }],
+            },
             additionalFiles:
             [
                 (FilePath("MudCard.razor"), """
@@ -764,9 +744,9 @@ public partial class CohostDocumentPullDiagnosticsTest
             """;
 
         return VerifyDiagnosticsAsync(input,
-            htmlResponse: [new VSInternalDiagnosticReport
+            htmlResponse: new FullDocumentDiagnosticReport
             {
-                Diagnostics =
+                Items =
                 [
                     new LspDiagnostic
                     {
@@ -774,7 +754,7 @@ public partial class CohostDocumentPullDiagnosticsTest
                         Range = SourceText.From(input.Text).GetRange(new TextSpan(input.Text.IndexOf(firstLine), firstLine.Length))
                     },
                 ]
-            }]);
+            });
     }
 
     [Fact]
@@ -787,9 +767,9 @@ public partial class CohostDocumentPullDiagnosticsTest
             """;
 
         return VerifyDiagnosticsAsync(input,
-            htmlResponse: [new VSInternalDiagnosticReport
+            htmlResponse: new FullDocumentDiagnosticReport
             {
-                Diagnostics =
+                Items =
                 [
                     new LspDiagnostic
                     {
@@ -797,7 +777,7 @@ public partial class CohostDocumentPullDiagnosticsTest
                         Range = SourceText.From(input.Text).GetRange(new TextSpan(input.Text.IndexOf(firstLine), firstLine.Length))
                     },
                 ]
-            }]);
+            });
     }
 
     [Theory]
@@ -821,9 +801,9 @@ public partial class CohostDocumentPullDiagnosticsTest
             """;
 
         return VerifyDiagnosticsAsync(input,
-            htmlResponse: [new VSInternalDiagnosticReport
+            htmlResponse: new FullDocumentDiagnosticReport
             {
-                Diagnostics =
+                Items =
                 [
                     new LspDiagnostic
                     {
@@ -836,7 +816,7 @@ public partial class CohostDocumentPullDiagnosticsTest
                         Range = SourceText.From(input.Text).GetRange(new TextSpan(input.Text.IndexOf("T"), "ThisIsNotValid".Length))
                     },
                 ]
-            }]);
+            });
     }
 
     [Fact]
@@ -890,7 +870,7 @@ public partial class CohostDocumentPullDiagnosticsTest
 
     private async Task VerifyDiagnosticsAsync(
         TestCode input,
-        VSInternalDiagnosticReport[]? htmlResponse = null,
+        FullDocumentDiagnosticReport? htmlResponse = null,
         RazorFileKind? fileKind = null,
         bool taskListRequest = false,
         bool miscellaneousFile = false,
@@ -899,7 +879,10 @@ public partial class CohostDocumentPullDiagnosticsTest
         var document = CreateProjectAndRazorDocument(input.Text, fileKind, miscellaneousFile: miscellaneousFile, additionalFiles: additionalFiles);
         var inputText = await document.GetTextAsync(DisposalToken);
 
-        var requestInvoker = new TestHtmlRequestInvoker([(VSInternalMethods.DocumentPullDiagnosticName, htmlResponse)]);
+        var htmlReport = htmlResponse is null
+            ? (SumType<FullDocumentDiagnosticReport, UnchangedDocumentDiagnosticReport>?)null
+            : new(htmlResponse);
+        var requestInvoker = new TestHtmlRequestInvoker([(Methods.TextDocumentDiagnosticName, htmlReport)]);
 
         ClientSettingsManager.Update(ClientSettingsManager.GetClientSettings().AdvancedSettings with { TaskListDescriptors = ["TODO"] });
         var result = await MakeDiagnosticsRequestAsync(document, taskListRequest, requestInvoker, IncompatibleProjectService, RemoteServiceInvoker, ClientCapabilitiesService, LoggerFactory, DisposalToken);
@@ -948,20 +931,14 @@ public partial class CohostDocumentPullDiagnosticsTest
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
-        var endpoint = new CohostDocumentPullDiagnosticsEndpoint(incompatibleProjectService, remoteServiceInvoker, requestInvoker, clientCapabilitiesService, NoOpTelemetryReporter.Instance, loggerFactory, VoidSessionTracker.Instance);
+        var endpoint = new PublicCohostDocumentPullDiagnosticsEndpoint(incompatibleProjectService, remoteServiceInvoker, requestInvoker, clientCapabilitiesService, NoOpTelemetryReporter.Instance, loggerFactory, VoidSessionTracker.Instance);
+        var request = new DocumentDiagnosticParams
+        {
+            TextDocument = new TextDocumentIdentifier { DocumentUri = document.GetURI() },
+            Identifier = taskListRequest ? PullDiagnosticCategories.Task : PullDiagnosticCategories.DocumentCompilerSyntax,
+        };
 
-        var result = taskListRequest
-            ? await endpoint.GetTestAccessor().HandleTaskListItemRequestAsync(document, cancellationToken)
-            : [new()
-                {
-                    Diagnostics = await endpoint.GetTestAccessor().HandleRequestAsync(
-                        new VSInternalDocumentDiagnosticsParams
-                        {
-                            TextDocument = new TextDocumentIdentifier { DocumentUri = document.GetURI() }
-                        },
-                        document,
-                        cancellationToken)
-                }];
-        return result.FirstOrDefault()?.Diagnostics;
+        var result = await endpoint.GetTestAccessor().HandleRequestAsync(request, document, cancellationToken);
+        return result?.Items;
     }
 }

@@ -49,14 +49,6 @@ public sealed class VSTypeScriptHandlerTests : AbstractLanguageServerProtocolTes
         await using var testLspServer = await CreateTsTestLspServerAsync(workspaceXml, new InitializationOptions());
 
         var document = testLspServer.GetCurrentSolution().Projects.Single().Documents.Single();
-        var legacyDocumentPullRequest = new VSInternalDocumentDiagnosticsParams
-        {
-            TextDocument = CreateTextDocumentIdentifier(document.GetURI(), document.Project.Id)
-        };
-
-        var legacyDocumentResponse = await testLspServer.ExecuteRequestAsync<VSInternalDocumentDiagnosticsParams, VSInternalDiagnosticReport[]>(VSInternalMethods.DocumentPullDiagnosticName, legacyDocumentPullRequest, CancellationToken.None);
-        AssertEx.Empty(legacyDocumentResponse);
-
         var publicDocumentPullRequest = new DocumentDiagnosticParams
         {
             TextDocument = CreateTextDocumentIdentifier(document.GetURI(), document.Project.Id)
@@ -101,17 +93,8 @@ public sealed class VSTypeScriptHandlerTests : AbstractLanguageServerProtocolTes
         await using var testLspServer = await CreateTsTestLspServerAsync("<Workspace></Workspace>", initializationOptions);
 
         var serverCapabilities = Assert.IsType<VSInternalServerCapabilities>(testLspServer.GetServerCapabilities());
-        Assert.True(serverCapabilities.SupportsDiagnosticRequests);
-        var legacyDiagnosticOptions = Assert.IsType<VSInternalDiagnosticOptions>(serverCapabilities.DiagnosticProvider);
-        Assert.True(legacyDiagnosticOptions.SupportsMultipleContextsDiagnostics);
-        AssertEx.Equal(
-            [
-                PullDiagnosticCategories.Task,
-                PullDiagnosticCategories.WorkspaceDocumentsAndProject,
-                PullDiagnosticCategories.DocumentAnalyzerSyntax,
-                PullDiagnosticCategories.DocumentAnalyzerSemantic,
-            ],
-            Assert.IsType<VSInternalDiagnosticKind[]>(legacyDiagnosticOptions.DiagnosticKinds).Select(kind => kind.Value));
+        var vsDiagnosticOptions = Assert.IsType<VSInternalDiagnosticOptions>(serverCapabilities.DiagnosticProvider);
+        Assert.True(vsDiagnosticOptions.SupportsMultipleContextsDiagnostics);
 
         var publicRegistrations = clientCallbackTarget.Registrations
             .Where(registration => registration.Method == Methods.TextDocumentDiagnosticName)

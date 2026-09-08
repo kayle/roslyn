@@ -38,7 +38,7 @@ public partial class CohostDocumentPullDiagnosticsTest
             }
             """);
 
-        var requestInvoker = new TestHtmlRequestInvoker([(VSInternalMethods.DocumentPullDiagnosticName, (VSInternalDiagnosticReport[]?)null)]);
+        var requestInvoker = new TestHtmlRequestInvoker([(Methods.TextDocumentDiagnosticName, (SumType<FullDocumentDiagnosticReport, UnchangedDocumentDiagnosticReport>?)null)]);
         var result = await MakeDiagnosticsRequestAsync(document, taskListRequest: false, requestInvoker, IncompatibleProjectService, RemoteServiceInvoker, ClientCapabilitiesService, LoggerFactory, DisposalToken);
 
         Assert.NotNull(result);
@@ -52,9 +52,32 @@ public partial class CohostDocumentPullDiagnosticsTest
         Assert.Contains(tags, tag => tag == DiagnosticTag.Unnecessary);
     }
 
+    [Fact]
+    public async Task PublicHtmlDiagnostics()
+    {
+        var document = CreateProjectAndRazorDocument("<div></div>");
+        var requestInvoker = new TestHtmlRequestInvoker(
+            (Methods.TextDocumentDiagnosticName, new SumType<FullDocumentDiagnosticReport, UnchangedDocumentDiagnosticReport>(
+                new FullDocumentDiagnosticReport
+                {
+                    Items =
+                    [
+                        new LspDiagnostic
+                        {
+                            Code = "HTML0001",
+                            Range = LspFactory.DefaultRange,
+                        }
+                    ]
+                })));
+
+        var result = await MakeDiagnosticsRequestAsync(document, taskListRequest: false, requestInvoker, IncompatibleProjectService, RemoteServiceInvoker, ClientCapabilitiesService, LoggerFactory, DisposalToken);
+
+        Assert.Contains(Assert.IsType<LspDiagnostic[]>(result), diagnostic => diagnostic.Code.AssumeNotNull().Second == "HTML0001");
+    }
+
     private async Task VerifyDiagnosticsAsync(
         TestCode input,
-        VSInternalDiagnosticReport[]? htmlResponse = null,
+        LspDiagnostic[]? htmlResponse = null,
         RazorFileKind? fileKind = null,
         bool miscellaneousFile = false,
         (string fileName, string contents)[]? additionalFiles = null)
@@ -62,7 +85,10 @@ public partial class CohostDocumentPullDiagnosticsTest
         var document = CreateProjectAndRazorDocument(input.Text, fileKind, miscellaneousFile: miscellaneousFile, additionalFiles: additionalFiles);
         var inputText = await document.GetTextAsync(DisposalToken);
 
-        var requestInvoker = new TestHtmlRequestInvoker([(VSInternalMethods.DocumentPullDiagnosticName, htmlResponse)]);
+        var htmlReport = htmlResponse is null
+            ? (SumType<FullDocumentDiagnosticReport, UnchangedDocumentDiagnosticReport>?)null
+            : new(new FullDocumentDiagnosticReport { Items = htmlResponse });
+        var requestInvoker = new TestHtmlRequestInvoker([(Methods.TextDocumentDiagnosticName, htmlReport)]);
 
         var result = await MakeDiagnosticsRequestAsync(document, taskListRequest: false, requestInvoker, IncompatibleProjectService, RemoteServiceInvoker, ClientCapabilitiesService, LoggerFactory, DisposalToken);
 
