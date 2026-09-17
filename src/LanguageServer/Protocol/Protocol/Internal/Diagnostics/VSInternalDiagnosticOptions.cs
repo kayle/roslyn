@@ -28,5 +28,4 @@ internal record class VSInternalDiagnosticOptions
     [JsonPropertyName("_vs_supportsMultipleContextDiagnostics")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool SupportsMultipleContextsDiagnostics { get; init; }
-
 }
